@@ -1,246 +1,353 @@
+import os
+import platform
 import discord
 import asyncio
-import aiohttp
-import os
-import sys
-from colorama import Fore, Style, init
-from datetime import datetime
+import colorama
+from colorama import Fore, init, Style
 
-init()
+# Initialize colorama
+colorama.init()
 
-# ===== Constants =====
-VERSION = "v3.1.0"
-AUTHOR = "Dark Cloner Team"
+# Print functions with colors
+def print_add(message):
+    print(f'{Fore.GREEN}[+]{Style.RESET_ALL} {message}')
 
-# ===== Logger =====
-class Logger:
+def print_delete(message):
+    print(f'{Fore.RED}[-]{Style.RESET_ALL} {message}')
+
+def print_warning(message):
+    print(f'{Fore.YELLOW}[!]{Style.RESET_ALL} {message}')
+
+def print_error(message):
+    print(f'{Fore.RED}[ERROR]{Style.RESET_ALL} {message}')
+
+def print_info(message):
+    print(f'{Fore.CYAN}[*]{Style.RESET_ALL} {message}')
+
+class Clone:
     @staticmethod
-    def timestamp():
-        return datetime.now().strftime("%H:%M:%S")
-
-    @staticmethod
-    def info(message):
-        print(f"{Fore.CYAN}[{Logger.timestamp()}] {message}{Style.RESET_ALL}")
-
-    @staticmethod
-    def success(message):
-        print(f"{Fore.GREEN}[{Logger.timestamp()}] {message}{Style.RESET_ALL}")
-
-    @staticmethod
-    def warning(message):
-        print(f"{Fore.YELLOW}[{Logger.timestamp()}] {message}{Style.RESET_ALL}")
-
-    @staticmethod
-    def error(message):
-        print(f"{Fore.RED}[{Logger.timestamp()}] {message}{Style.RESET_ALL}")
-
-# ===== Banner =====
-def show_banner():
-    banner = f"""
-{Fore.RED}
-██████╗  █████╗ ██████╗ ██╗  ██╗ ██████╗██╗  ██╗███████╗██████╗ 
-██╔══██╗██╔══██╗██╔══██╗██║ ██╔╝██╔════╝██║  ██║██╔════╝██╔══██╗
-██║  ██║███████║██████╔╝█████╔╝ ██║     ███████║█████╗  ██████╔╝
-██║  ██║██╔══██║██╔══██╗██╔═██╗ ██║     ██╔══██║██╔══╝  ██╔══██╗
-██████╔╝██║  ██║██║  ██║██║  ██╗╚██████╗██║  ██║███████╗██║  ██║
-╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-{Fore.BLUE}
-PROFESSIONAL SERVER CLONER {VERSION}
-{Fore.YELLOW}
-• Safe and efficient server cloning
-• Detailed logging system
-• Supports both bot and user tokens
-{Style.RESET_ALL}
-"""
-    print(banner)
-
-# ===== Cloner Core =====
-class DarkCloner:
-    def __init__(self, token):
-        self.token = token
-        self.session = aiohttp.ClientSession()
-        self.bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
-
-    async def fetch_image(self, url):
-        if not url:
-            return None
-        try:
-            async with self.session.get(url) as response:
-                return await response.read()
-        except Exception as e:
-            Logger.error(f"Failed to fetch image: {e}")
-            return None
-
-    async def verify_token(self):
-        try:
-            await self.bot.login(self.token)
-            Logger.success(f"Token verified for user: {self.bot.user.name}")
-            await self.bot.close()
-            return True
-        except Exception as e:
-            Logger.error(f"Token verification failed: {e}")
-            return False
-
-    async def clone_roles(self, source_guild, target_guild):
-        role_map = {}
-        for role in sorted(source_guild.roles, key=lambda r: r.position, reverse=True):
-            if role.is_default():
-                continue
+    async def roles_delete(guild_to: discord.Guild):
+        for role in guild_to.roles:
             try:
-                new_role = await target_guild.create_role(
+                if role.name != "@everyone":
+                    await role.delete()
+                    print_delete(f"Deleted Role: {role.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Deleting Role: {role.name}")
+            except discord.HTTPException:
+                print_error(f"Unable to Delete Role: {role.name}")
+
+    @staticmethod
+    async def roles_create(guild_to: discord.Guild, guild_from: discord.Guild):
+        roles = []
+        role: discord.Role
+        for role in guild_from.roles:
+            if role.name != "@everyone":
+                roles.append(role)
+        roles = roles[::-1]
+        for role in roles:
+            try:
+                await guild_to.create_role(
                     name=role.name,
                     permissions=role.permissions,
-                    color=role.color,
+                    colour=role.colour,
                     hoist=role.hoist,
                     mentionable=role.mentionable
                 )
-                role_map[role.id] = new_role
-                Logger.success(f"Created role: {new_role.name}")
-            except Exception as e:
-                Logger.error(f"Failed to create role {role.name}: {e}")
-        return role_map
+                print_add(f"Created Role {role.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Creating Role: {role.name}")
+            except discord.HTTPException:
+                print_error(f"Unable to Create Role: {role.name}")
 
-    async def clone_channels(self, source_guild, target_guild, role_map):
-        # Clone categories first
-        category_map = {}
-        for category in source_guild.categories:
+    @staticmethod
+    async def channels_delete(guild_to: discord.Guild):
+        for channel in guild_to.channels:
             try:
-                new_category = await target_guild.create_category(
-                    name=category.name,
-                    position=category.position
-                )
-                category_map[category.id] = new_category
-                Logger.success(f"Created category: {new_category.name}")
-            except Exception as e:
-                Logger.error(f"Failed to create category {category.name}: {e}")
+                await channel.delete()
+                print_delete(f"Deleted Channel: {channel.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Deleting Channel: {channel.name}")
+            except discord.HTTPException:
+                print_error(f"Unable To Delete Channel: {channel.name}")
 
-        # Clone text and voice channels
-        for channel in source_guild.channels:
-            if not isinstance(channel, discord.CategoryChannel):
+    @staticmethod
+    async def categories_create(guild_to: discord.Guild, guild_from: discord.Guild):
+        channels = guild_from.categories
+        channel: discord.CategoryChannel
+        new_channel: discord.CategoryChannel
+        for channel in channels:
+            try:
+                overwrites_to = {}
+                for key, value in channel.overwrites.items():
+                    role = discord.utils.get(guild_to.roles, name=key.name)
+                    overwrites_to[role] = value
+                new_channel = await guild_to.create_category(
+                    name=channel.name,
+                    overwrites=overwrites_to)
+                await new_channel.edit(position=channel.position)
+                print_add(f"Created Category: {channel.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Deleting Category: {channel.name}")
+            except discord.HTTPException:
+                print_error(f"Unable To Delete Category: {channel.name}")
+
+    @staticmethod
+    async def channels_create(guild_to: discord.Guild, guild_from: discord.Guild):
+        channel_text: discord.TextChannel
+        channel_voice: discord.VoiceChannel
+        category = None
+        for channel_text in guild_from.text_channels:
+            try:
+                for category in guild_to.categories:
+                    try:
+                        if category.name == channel_text.category.name:
+                            break
+                    except AttributeError:
+                        print_warning(f"Channel {channel_text.name} doesn't have any category!")
+                        category = None
+                        break
+
+                overwrites_to = {}
+                for key, value in channel_text.overwrites.items():
+                    role = discord.utils.get(guild_to.roles, name=key.name)
+                    overwrites_to[role] = value
                 try:
-                    parent = category_map.get(channel.category_id)
-                    if isinstance(channel, discord.TextChannel):
-                        new_channel = await target_guild.create_text_channel(
-                            name=channel.name,
-                            topic=channel.topic,
-                            slowmode_delay=channel.slowmode_delay,
-                            nsfw=channel.is_nsfw(),
-                            position=channel.position,
-                            category=parent
-                        )
-                    elif isinstance(channel, discord.VoiceChannel):
-                        new_channel = await target_guild.create_voice_channel(
-                            name=channel.name,
-                            bitrate=channel.bitrate,
-                            user_limit=channel.user_limit,
-                            position=channel.position,
-                            category=parent
-                        )
-                    Logger.success(f"Created channel: {new_channel.name}")
-                except Exception as e:
-                    Logger.error(f"Failed to create channel {channel.name}: {e}")
+                    new_channel = await guild_to.create_text_channel(
+                        name=channel_text.name,
+                        overwrites=overwrites_to,
+                        position=channel_text.position,
+                        topic=channel_text.topic,
+                        slowmode_delay=channel_text.slowmode_delay,
+                        nsfw=channel_text.nsfw)
+                except:
+                    new_channel = await guild_to.create_text_channel(
+                        name=channel_text.name,
+                        overwrites=overwrites_to,
+                        position=channel_text.position)
+                if category is not None:
+                    await new_channel.edit(category=category)
+                print_add(f"Created Text Channel: {channel_text.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Creating Text Channel: {channel_text.name}")
+            except discord.HTTPException:
+                print_error(f"Unable To Creating Text Channel: {channel_text.name}")
+            except:
+                print_error(f"Error While Creating Text Channel: {channel_text.name}")
 
-    async def clone_emojis(self, source_guild, target_guild):
-        for emoji in source_guild.emojis:
+        category = None
+        for channel_voice in guild_from.voice_channels:
             try:
-                emoji_data = await self.fetch_image(emoji.url)
-                if emoji_data:
-                    await target_guild.create_custom_emoji(
-                        name=emoji.name,
-                        image=emoji_data
-                    )
-                    Logger.success(f"Created emoji: {emoji.name}")
-            except Exception as e:
-                Logger.error(f"Failed to create emoji {emoji.name}: {e}")
+                for category in guild_to.categories:
+                    try:
+                        if category.name == channel_voice.category.name:
+                            break
+                    except AttributeError:
+                        print_warning(f"Channel {channel_voice.name} doesn't have any category!")
+                        category = None
+                        break
 
-    async def clone_server(self, source_id, new_name):
+                overwrites_to = {}
+                for key, value in channel_voice.overwrites.items():
+                    role = discord.utils.get(guild_to.roles, name=key.name)
+                    overwrites_to[role] = value
+                try:
+                    new_channel = await guild_to.create_voice_channel(
+                        name=channel_voice.name,
+                        overwrites=overwrites_to,
+                        position=channel_voice.position,
+                        bitrate=channel_voice.bitrate,
+                        user_limit=channel_voice.user_limit,
+                        )
+                except:
+                    new_channel = await guild_to.create_voice_channel(
+                        name=channel_voice.name,
+                        overwrites=overwrites_to,
+                        position=channel_voice.position)
+                if category is not None:
+                    await new_channel.edit(category=category)
+                print_add(f"Created Voice Channel: {channel_voice.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Creating Voice Channel: {channel_voice.name}")
+            except discord.HTTPException:
+                print_error(f"Unable To Creating Voice Channel: {channel_voice.name}")
+            except:
+                print_error(f"Error While Creating Voice Channel: {channel_voice.name}")
+
+    @staticmethod
+    async def emojis_delete(guild_to: discord.Guild):
+        for emoji in guild_to.emojis:
+            try:
+                await emoji.delete()
+                print_delete(f"Deleted Emoji: {emoji.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Deleting Emoji{emoji.name}")
+            except discord.HTTPException:
+                print_error(f"Error While Deleting Emoji {emoji.name}")
+
+    @staticmethod
+    async def emojis_create(guild_to: discord.Guild, guild_from: discord.Guild):
+        emoji: discord.Emoji
+        for emoji in guild_from.emojis:
+            try:
+                emoji_image = await emoji.url.read()
+                await guild_to.create_custom_emoji(
+                    name=emoji.name,
+                    image=emoji_image)
+                print_add(f"Created Emoji {emoji.name}")
+            except discord.Forbidden:
+                print_error(f"Error While Creating Emoji {emoji.name} ")
+            except discord.HTTPException:
+                print_error(f"Error While Creating Emoji {emoji.name}")
+
+    @staticmethod
+    async def guild_edit(guild_to: discord.Guild, guild_from: discord.Guild):
         try:
-            Logger.info("Starting server cloning process...")
-            await self.bot.login(self.token)
+            try:
+                icon_image = await guild_from.icon_url.read()
+            except discord.errors.DiscordException:
+                print_error(f"Can't read icon image from {guild_from.name}")
+                icon_image = None
+            await guild_to.edit(name=f'{guild_from.name}')
+            if icon_image is not None:
+                try:
+                    await guild_to.edit(icon=icon_image)
+                    print_add(f"Guild Icon Changed: {guild_to.name}")
+                except:
+                    print_error(f"Error While Changing Guild Icon: {guild_to.name}")
+        except discord.Forbidden:
+            print_error(f"Error While Changing Guild Icon: {guild_to.name}")
 
-            source_guild = self.bot.get_guild(int(source_id))
-            if not source_guild:
-                Logger.error("Source server not found or bot doesn't have access")
-                return False
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-            Logger.info(f"Cloning server: {source_guild.name}")
+def show_banner():
+    print(f"""{Fore.RED}
 
-            # Create new guild
-            icon = await self.fetch_image(source_guild.icon_url)
-            new_guild = await self.bot.create_guild(
-                name=new_name,
-                icon=icon,
-                region=source_guild.region
-            )
-            Logger.success(f"Created new server: {new_guild.name}")
+                                    ,gggggggggggg,                                              ,gggg,                                                        
+dP"""88""""""Y8b,                         ,dPYb,           ,88"""Y8b, ,dPYb,                                               
+Yb,  88       `8b,                        IP'`Yb          d8"     `Y8 IP'`Yb                                               
+ `"  88        `8b                        I8  8I         d8'   8b  d8 I8  8I                                               
+     88         Y8                        I8  8bgg,     ,8I    "Y88P' I8  8'                                               
+     88         d8   ,gggg,gg   ,gggggg,  I8 dP" "8     I8'           I8 dP    ,ggggg,     ,ggg,,ggg,    ,ggg,    ,gggggg, 
+     88        ,8P  dP"  "Y8I   dP""""8I  I8d8bggP"     d8            I8dP    dP"  "Y8ggg ,8" "8P" "8,  i8" "8i   dP""""8I 
+     88       ,8P' i8'    ,8I  ,8'    8I  I8P' "Yb,     Y8,           I8P    i8'    ,8I   I8   8I   8I  I8, ,8I  ,8'    8I 
+     88______,dP' ,d8,   ,d8b,,dP     Y8,,d8    `Yb,    `Yba,,_____, ,d8b,_ ,d8,   ,d8'  ,dP   8I   Yb, `YbadP' ,dP     Y8,
+    888888888P"   P"Y8888P"`Y88P      `Y888P      Y8      `"Y8888888 8P'"Y88P"Y8888P"    8P'   8I   `Y8888P"Y8888P      `Y8
+                                                                                                                           
+                                                                                                                           
+                                                                                                                           
+                                                                                                                           
+                                                                                                                           
+{Style.RESET_ALL}""")
 
-            # Clone components
-            await self.clone_roles(source_guild, new_guild)
-            await self.clone_channels(source_guild, new_guild)
-            await self.clone_emojis(source_guild, new_guild)
+def show_menu():
+    print(f"{Fore.CYAN}╔══════════════════════════════════════════════════════════════════════════════╗")
+    print(f"║ {Fore.MAGENTA}ULTIMATE HYPER ULTRA LUA CLONER v4.0{Fore.CYAN}                                    ║")
+    print(f"║══════════════════════════════════════════════════════════════════════════════║")
+    print(f"║ {Fore.YELLOW}1. Clone Server Structure                                       {Fore.CYAN}║")
+    print(f"║ {Fore.YELLOW}2. Clone Server with Emojis                                     {Fore.CYAN}║")
+    print(f"║ {Fore.YELLOW}3. Clone Server with Webhooks (Coming Soon)                     {Fore.CYAN}║")
+    print(f"║ {Fore.YELLOW}4. Nuke Server (Coming Soon)                                    {Fore.CYAN}║")
+    print(f"║ {Fore.YELLOW}5. Exit                                                         {Fore.CYAN}║")
+    print(f"╚══════════════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}")
+    print(f"\n{Fore.GREEN}Credits: Dark | NotSaksh#6969 | Ultimate Lua Team{Style.RESET_ALL}\n")
 
-            Logger.success("Server cloning completed successfully!")
-            return True
-
-        except Exception as e:
-            Logger.error(f"Cloning failed: {e}")
-            return False
-        finally:
-            await self.bot.close()
-
-# ===== Menu System =====
-async def main_menu():
-    while True:
-        print(f"\n{Fore.CYAN}=== MAIN MENU ===")
-        print(f"{Fore.YELLOW}1. Verify Token")
-        print(f"2. Clone Server")
-        print(f"3. Server Information")
-        print(f"4. Exit{Style.RESET_ALL}")
-
-        choice = input(f"{Fore.CYAN}[?] Select an option: {Style.RESET_ALL}")
-
-        if choice == "1":
-            token = input(f"{Fore.CYAN}[?] Enter your token: {Style.RESET_ALL}")
-            cloner = DarkCloner(token)
-            await cloner.verify_token()
-
-        elif choice == "2":
-            token = input(f"{Fore.CYAN}[?] Enter your token: {Style.RESET_ALL}")
-            source_id = input(f"{Fore.CYAN}[?] Source server ID: {Style.RESET_ALL}")
-            new_name = input(f"{Fore.CYAN}[?] New server name: {Style.RESET_ALL}")
-
-            cloner = DarkCloner(token)
-            await cloner.clone_server(source_id, new_name)
-
-        elif choice == "3":
-            Logger.info(f"Version: {VERSION}")
-            Logger.info(f"Author: {AUTHOR}")
-            Logger.info("Features:")
-            Logger.info("- Complete server cloning")
-            Logger.info("- Role, channel, and emoji duplication")
-            Logger.info("- Safe and efficient operations")
-
-        elif choice == "4":
-            Logger.success("Exiting Dark Cloner...")
-            break
-
-        else:
-            Logger.error("Invalid option selected")
-
-# ===== Main Execution =====
-if __name__ == "__main__":
-    show_banner()
-    Logger.info("Initializing Dark Cloner...")
-    
-    if not os.path.exists('/data/data/com.termux/files/home'):
-        Logger.error("This script must be run in Termux")
-        sys.exit(1)
-
+async def clone_server(client, input_guild_id, output_guild_id, clone_emojis=False):
     try:
-        asyncio.run(main_menu())
-    except KeyboardInterrupt:
-        Logger.warning("Process interrupted by user")
+        print_info(f"Logged In as: {client.user}")
+        print_info("Starting Server Clone Process...")
+        
+        guild_from = client.get_guild(int(input_guild_id))
+        guild_to = client.get_guild(int(output_guild_id))
+        
+        print_info("Editing server settings...")
+        await Clone.guild_edit(guild_to, guild_from)
+        
+        print_info("Deleting existing roles...")
+        await Clone.roles_delete(guild_to)
+        
+        print_info("Deleting existing channels...")
+        await Clone.channels_delete(guild_to)
+        
+        print_info("Creating new roles...")
+        await Clone.roles_create(guild_to, guild_from)
+        
+        print_info("Creating categories...")
+        await Clone.categories_create(guild_to, guild_from)
+        
+        print_info("Creating channels...")
+        await Clone.channels_create(guild_to, guild_from)
+        
+        if clone_emojis:
+            print_info("Deleting existing emojis...")
+            await Clone.emojis_delete(guild_to)
+            
+            print_info("Creating new emojis...")
+            await Clone.emojis_create(guild_to, guild_from)
+        
+        print(f"""{Fore.GREEN}
+
+                                        ░█████╗░██╗░░░░░░█████╗░███╗░░██╗███████╗██████╗░
+                                        ██╔══██╗██║░░░░░██╔══██╗████╗░██║██╔════╝██╔══██╗
+                                        ██║░░╚═╝██║░░░░░██║░░██║██╔██╗██║█████╗░░██║░░██║
+                                        ██║░░██╗██║░░░░░██║░░██║██║╚████║██╔══╝░░██║░░██║
+                                        ╚█████╔╝███████╗╚█████╔╝██║░╚███║███████╗██████╔╝
+                                        ░╚════╝░╚══════╝░╚════╝░╚═╝░░╚══╝╚══════╝╚═════╝░
+
+                                        █▄█ █▀█ █░█ █ █▄░█ █▀▀ █▀
+                                        ░█░ █▄█ █▄█ █ █░▀█ ██▄ ▄█
+
+                                        {Style.RESET_ALL}""")
+        print_info("Server cloned successfully! Exiting in 5 seconds...")
+        await asyncio.sleep(5)
     except Exception as e:
-        Logger.error(f"Fatal error: {e}")
-    finally:
-        Logger.info("Dark Cloner session ended")
+        print_error(f"An error occurred: {str(e)}")
+
+def main():
+    client = discord.Client()
+    
+    # Clear screen and show banner
+    clear_screen()
+    show_banner()
+    show_menu()
+    
+    option = input(f'{Fore.BLUE}Select an option (1-5): {Style.RESET_ALL}')
+
+    if option == "1":
+        token = input(f'{Fore.YELLOW}Please enter your token:\n > {Style.RESET_ALL}')
+        guild_s = input(f'{Fore.YELLOW}Please enter guild id you want to copy:\n > {Style.RESET_ALL}')
+        guild = input(f'{Fore.YELLOW}Please enter guild id where you want to copy:\n > {Style.RESET_ALL}')
+        
+        @client.event
+        async def on_ready():
+            await clone_server(client, guild_s, guild)
+            await client.close()
+        
+        client.run(token, bot=False)
+    
+    elif option == "2":
+        token = input(f'{Fore.YELLOW}Please enter your token:\n > {Style.RESET_ALL}')
+        guild_s = input(f'{Fore.YELLOW}Please enter guild id you want to copy:\n > {Style.RESET_ALL}')
+        guild = input(f'{Fore.YELLOW}Please enter guild id where you want to copy:\n > {Style.RESET_ALL}')
+        
+        @client.event
+        async def on_ready():
+            await clone_server(client, guild_s, guild, clone_emojis=True)
+            await client.close()
+        
+        client.run(token, bot=False)
+    
+    elif option == "5":
+        print_info("Exiting Dark Cloner...")
+        exit()
+    else:
+        print_warning("This feature is coming soon! Stay tuned for updates!")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print_error("\nOperation cancelled by user")
+    except Exception as e:
+        print_error(f"An unexpected error occurred: {str(e)}")
